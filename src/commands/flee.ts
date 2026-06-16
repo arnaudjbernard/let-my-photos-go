@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import AdmZip from 'adm-zip';
 import { utimes } from 'utimes';
-import { launchHeadlessBrowser, isSessionValid, AUTH_PATH } from '../browser.js';
+import { launchHeadlessBrowser, saveSession, AUTH_PATH } from '../browser.js';
 import { enumerateAllMediaItems } from '../api.js';
 import { upsertPhoto, markDownloaded, markFailed, getPendingPhotos, hasAnyPhotos, getDestPathOwner, getStats } from '../db.js';
 import { readConfig } from '../config.js';
@@ -123,15 +123,6 @@ export const fleeCommand = new Command('flee')
     let { browser, context } = await launchHeadlessBrowser({ inspect: options.inspect });
     spinner.stop('Browser ready.');
 
-    spinner.start('Checking session…');
-    const valid = await isSessionValid(context);
-    if (!valid) {
-      spinner.stop('Session invalid.');
-      clack.log.error('No valid session found. Run `lmpg auth` to log in.');
-      await browser.close();
-      process.exit(1);
-    }
-    spinner.stop('Session is valid.');
 
     const skipEnum = options.resume && hasAnyPhotos();
     if (skipEnum) {
@@ -214,8 +205,10 @@ export const fleeCommand = new Command('flee')
         await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
         if (!page.url().startsWith('https://photos.google.com/')) {
-          sessionExpired = true;
-          clack.log.error('Session expired — run `lmpg auth` to sign in again.');
+          if (!sessionExpired) {
+            sessionExpired = true;
+            clack.log.error('Session expired — run `lmpg auth` to sign in again.');
+          }
           return;
         }
 
@@ -270,13 +263,16 @@ export const fleeCommand = new Command('flee')
 
     for (let chunkStart = 0; chunkStart < pending.length; chunkStart += BROWSER_RESTART_EVERY) {
       if (chunkStart > 0) {
+        await saveSession(context);
         await browser.close();
         clack.log.info(`[${prevDownloaded + downloaded + failed}/${grandTotal}] Restarting browser to free memory…`);
         ({ browser, context } = await launchHeadlessBrowser({ inspect: options.inspect }));
       }
       await runWithConcurrency(pending.slice(chunkStart, chunkStart + BROWSER_RESTART_EVERY), concurrency, worker);
+      if (sessionExpired) break;
     }
 
+    await saveSession(context);
     await browser.close();
 
     if (sessionExpired) {

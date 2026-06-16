@@ -24,7 +24,7 @@ export const authCommand = new Command('auth')
 
     const spinner = clack.spinner();
     spinner.start('Launching browser…');
-    const { browser, context } = await launchHeadedBrowser();
+    const { browser, context } = await launchHeadedBrowser(fs.existsSync(AUTH_PATH) ? AUTH_PATH : undefined);
     const page = await context.newPage();
     spinner.stop('Browser launched.');
 
@@ -46,5 +46,5 @@ export const authCommand = new Command('auth')
 
     await browser.close();
 
-    clack.outro("Logged in! Now run `lmpg config` to set up API access. 🗺️");
+    clack.outro("Logged in! Run `lmpg config` to configure your download settings.");
   });
