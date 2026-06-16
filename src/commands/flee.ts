@@ -6,7 +6,7 @@ import AdmZip from 'adm-zip';
 import { utimes } from 'utimes';
 import { launchHeadlessBrowser, isSessionValid, AUTH_PATH } from '../browser.js';
 import { enumerateAllMediaItems } from '../api.js';
-import { upsertPhoto, markDownloaded, markFailed, getPendingPhotos, hasAnyPhotos, getDestPathOwner } from '../db.js';
+import { upsertPhoto, markDownloaded, markFailed, getPendingPhotos, hasAnyPhotos, getDestPathOwner, getStats } from '../db.js';
 import { readConfig } from '../config.js';
 import type { PhotoRecord, PhotoFilter } from '../db.js';
 
@@ -187,6 +187,7 @@ export const fleeCommand = new Command('flee')
     let downloaded = 0;
     let failed = 0;
     const total = pending.length;
+    const { downloaded: prevDownloaded, total: grandTotal } = getStats();
 
     const worker = async (photo: PhotoRecord) => {
       // Reconcile: file already on disk at recorded path
@@ -194,7 +195,7 @@ export const fleeCommand = new Command('flee')
         const filename = path.basename(photo.dest_path);
         markDownloaded(photo.media_item_id, photo.dest_path, filename);
         downloaded++;
-        clack.log.step(`[${downloaded + failed}/${total}] ✓ ${filename} (already on disk)`);
+        clack.log.step(`[${prevDownloaded + downloaded + failed}/${grandTotal}] ✓ ${filename} (already on disk)`);
         return;
       }
 
@@ -207,6 +208,7 @@ export const fleeCommand = new Command('flee')
           waitUntil: 'load',
           timeout: 30000,
         });
+        await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
         await page.keyboard.press('Shift+KeyD');
 
@@ -247,11 +249,11 @@ export const fleeCommand = new Command('flee')
 
         markDownloaded(photo.media_item_id, actualDestPath, actualFilename);
         downloaded++;
-        clack.log.step(`[${downloaded + failed}/${total}] ✓ ${actualFilename}`);
+        clack.log.step(`[${prevDownloaded + downloaded + failed}/${grandTotal}] ✓ ${actualFilename}`);
       } catch (err) {
         markFailed(photo.media_item_id);
         failed++;
-        clack.log.warn(`[${downloaded + failed}/${total}] ✗ ${photo.media_item_id}: ${err instanceof Error ? err.message : String(err)}`);
+        clack.log.warn(`[${prevDownloaded + downloaded + failed}/${grandTotal}] ✗ ${photo.media_item_id}: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         await page.close();
       }
@@ -260,7 +262,7 @@ export const fleeCommand = new Command('flee')
     for (let chunkStart = 0; chunkStart < pending.length; chunkStart += BROWSER_RESTART_EVERY) {
       if (chunkStart > 0) {
         await browser.close();
-        clack.log.info(`[${downloaded + failed}/${total}] Restarting browser to free memory…`);
+        clack.log.info(`[${prevDownloaded + downloaded + failed}/${grandTotal}] Restarting browser to free memory…`);
         ({ browser, context } = await launchHeadlessBrowser({ inspect: options.inspect }));
       }
       await runWithConcurrency(pending.slice(chunkStart, chunkStart + BROWSER_RESTART_EVERY), concurrency, worker);
