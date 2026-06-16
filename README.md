@@ -86,9 +86,14 @@ Photos are organised into subdirectories by year and month:
   2023/
     06/  IMG_4821.jpg
     11/  IMG_5103.heic
+         IMG_5103.mov
   2024/
     01/  IMG_5209.jpg
 ```
+
+**iPhone Live Photos** are downloaded as ZIP archives by Google Photos and are automatically extracted. The `.heic` (still image) and `.mov` (video) are saved side-by-side with the same base name. The pairing is preserved — Apple's Photos app links Live Photo pairs by an embedded UUID in both files, not by filename.
+
+**Filesystem timestamps** (Finder's "Date Created" and "Date Modified") are set to the photo's original capture time from the Google Photos API, so they reflect when the photo was actually taken, not when it was downloaded.
 
 Progress is checkpointed to `~/.let-my-photos-go/photos.db` (SQLite). If interrupted, just run again — already-downloaded photos are skipped.
 
@@ -121,7 +126,7 @@ Shows total photos found, how many are downloaded, pending, and failed.
 
 1. **`lmpg auth`** saves a Playwright session to `~/.let-my-photos-go/auth.json`.
 2. **`lmpg flee`** intercepts the Bearer token the Google Photos web app uses internally, then calls the `mediaItems.list` API with it to enumerate your library. Downloads go through the browser session directly.
-3. Each file is saved to `<outputDir>/YYYY/MM/filename` and marked in SQLite. Re-runs skip completed photos. Duplicate filenames in the same month get a `_2`, `_3` suffix.
+3. Each file is saved to `<outputDir>/YYYY/MM/filename` and marked in SQLite. Re-runs skip completed photos. Duplicate filenames in the same month get a `_2`, `_3` suffix. iPhone Live Photos (downloaded as ZIPs) are extracted into a `.heic` + `.mov` pair with matching base names. Filesystem timestamps are set to the photo's original capture time.
 
 ---
 
