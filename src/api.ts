@@ -4,6 +4,9 @@ export interface MediaItem {
   id: string;
   productUrl: string;
   creationTime: number | null; // Unix ms timestamp
+  width: number | null;
+  height: number | null;
+  expectedSize: number | null;
 }
 
 interface BatchParams {
@@ -140,6 +143,7 @@ export async function* enumerateAllMediaItems(
     for (const item of items) {
       const arr = item as unknown[];
       const id = arr[0] as string;
+      const meta = Array.isArray(arr[1]) ? arr[1] as unknown[] : null;
       const creationTime = arr[2] as number | null;
 
       totalFetched++;
@@ -149,6 +153,9 @@ export async function* enumerateAllMediaItems(
         id,
         productUrl: `https://photos.google.com/photo/${id}`,
         creationTime: creationTime ?? null,
+        width:        meta ? (meta[1] as number | null) ?? null : null,
+        height:       meta ? (meta[2] as number | null) ?? null : null,
+        expectedSize: meta && Array.isArray(meta[9]) ? (meta[9] as number[])[0] ?? null : null,
       };
     }
 

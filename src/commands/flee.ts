@@ -82,9 +82,11 @@ export const fleeCommand = new Command('flee')
   .option('-m, --media-type <type>',   'Filter by media type: photo or video', 'all')
   .option('-l, --limit <n>',           'Maximum number of photos to download', parseInt)
   .option('-c, --concurrency <n>',     'Number of parallel downloads', parseInt)
+  .option('--re-enumerate',            'Force re-enumeration even if DB already has entries (overrides --resume skip)')
   .option('--inspect',                 'Open a visible browser with DevTools for each download (for debugging)')
   .action(async (options: {
     resume?: boolean;
+    reEnumerate?: boolean;
     failedOnly?: boolean;
     year?: string;
     from?: string;
@@ -137,7 +139,7 @@ export const fleeCommand = new Command('flee')
     spinner.stop('Browser ready.');
 
 
-    const skipEnum = options.resume && hasAnyPhotos();
+    const skipEnum = options.resume && !options.reEnumerate && hasAnyPhotos();
     if (skipEnum) {
       clack.log.info('Resuming — skipping enumeration (DB already has entries).');
     } else {
@@ -151,7 +153,7 @@ export const fleeCommand = new Command('flee')
           const creationTime = item.creationTime
             ? new Date(item.creationTime).toISOString()
             : null;
-          upsertPhoto(item.id, item.productUrl, creationTime);
+          upsertPhoto(item.id, item.productUrl, creationTime, item.width, item.height, item.expectedSize);
           if (options.limit && enumCount >= options.limit) break;
         }
       } catch (err) {
@@ -249,6 +251,7 @@ export const fleeCommand = new Command('flee')
       while (true) {
         const page = await context.newPage();
         let shouldRetry = false;
+
         try {
           const downloadPromise = page.waitForEvent('download', { timeout: 60000 });
           downloadPromise.catch(() => {}); // prevent unhandled rejection if page closes before download fires
@@ -322,6 +325,7 @@ export const fleeCommand = new Command('flee')
             await applyTimestamps(destPath);
             markDownloaded(photo.media_item_id, actualDestPath, actualFilename);
           }
+
           downloaded++;
           clack.log.step(`[${prevDownloaded + downloaded + failed}/${grandTotal}] ✓ ${actualFilename}`);
           return;

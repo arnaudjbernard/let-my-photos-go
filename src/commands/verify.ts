@@ -5,10 +5,24 @@ import * as path from 'path';
 import { getDb, resetToPending, setCompanionPath } from '../db.js';
 import type { PhotoRecord } from '../db.js';
 
-type IssueReason = 'missing' | 'empty' | 'stale-zip' | 'missing-companion' | 'empty-companion';
+type IssueReason =
+  | 'missing' | 'empty' | 'size-mismatch' | 'corrupt' | 'stale-zip'
+  | 'missing-companion' | 'empty-companion' | 'corrupt-companion';
 interface Issue { record: PhotoRecord; reason: IssueReason }
 
 const STILL_IMAGE_EXTS = new Set(['.heic', '.jpg', '.jpeg', '.png', '.gif', '.webp']);
+
+const MAGIC_BYTES: Record<string, (b: Buffer) => boolean> = {
+  '.jpg':  b => b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF,
+  '.jpeg': b => b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF,
+  '.png':  b => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47,
+  '.gif':  b => b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38,
+  '.webp': b => b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50,
+  '.heic': b => b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70,
+  '.mov':  b => b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70,
+  '.mp4':  b => b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70,
+  '.m4v':  b => b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70,
+};
 
 async function fileExists(p: string): Promise<boolean> {
   return fs.access(p).then(() => true).catch(() => false);
@@ -16,6 +30,16 @@ async function fileExists(p: string): Promise<boolean> {
 
 async function fileSize(p: string): Promise<number> {
   return fs.stat(p).then(s => s.size);
+}
+
+async function checkMagicBytes(filePath: string): Promise<boolean> {
+  const ext = path.extname(filePath).toLowerCase();
+  const checker = MAGIC_BYTES[ext];
+  if (!checker) return true;
+  const buf = Buffer.alloc(12);
+  const fh = await fs.open(filePath, 'r');
+  try { await fh.read(buf, 0, 12, 0); } finally { await fh.close(); }
+  return checker(buf);
 }
 
 export const verifyCommand = new Command('verify')
@@ -57,8 +81,17 @@ export const verifyCommand = new Command('verify')
         issues.push({ record, reason: 'missing' });
         continue;
       }
-      if ((await fileSize(record.dest_path)) === 0) {
+      const actualSize = await fileSize(record.dest_path);
+      if (actualSize === 0) {
         issues.push({ record, reason: 'empty' });
+        continue;
+      }
+      if (record.expected_size !== null && actualSize !== record.expected_size) {
+        issues.push({ record, reason: 'size-mismatch' });
+        continue;
+      }
+      if (!(await checkMagicBytes(record.dest_path))) {
+        issues.push({ record, reason: 'corrupt' });
         continue;
       }
 
@@ -78,6 +111,8 @@ export const verifyCommand = new Command('verify')
           issues.push({ record, reason: 'missing-companion' });
         } else if ((await fileSize(companionPath)) === 0) {
           issues.push({ record, reason: 'empty-companion' });
+        } else if (!(await checkMagicBytes(companionPath))) {
+          issues.push({ record, reason: 'corrupt-companion' });
         }
       }
     }
@@ -108,11 +143,14 @@ export const verifyCommand = new Command('verify')
 
     for (const { record, reason } of issues) {
       const label =
-        reason === 'missing'           ? 'MISSING      ' :
-        reason === 'empty'             ? 'EMPTY        ' :
-        reason === 'stale-zip'         ? 'STALE ZIP    ' :
-        reason === 'missing-companion' ? 'NO COMPANION ' :
-                                         'EMPTY MOV    ';
+        reason === 'missing'           ? 'MISSING       ' :
+        reason === 'empty'             ? 'EMPTY         ' :
+        reason === 'size-mismatch'     ? 'SIZE MISMATCH ' :
+        reason === 'corrupt'           ? 'CORRUPT       ' :
+        reason === 'stale-zip'         ? 'STALE ZIP     ' :
+        reason === 'missing-companion' ? 'NO COMPANION  ' :
+        reason === 'empty-companion'   ? 'EMPTY MOV     ' :
+                                         'CORRUPT MOV   ';
       clack.log.warn(`${label}  ${record.dest_path ?? `(no path) id=${record.media_item_id}`}`);
     }
 
