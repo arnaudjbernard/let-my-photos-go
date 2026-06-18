@@ -85,7 +85,6 @@ export const fleeCommand = new Command('flee')
   .option('-y, --year <year>', 'Only download photos from a specific year (e.g. 2023)')
   .option('--from <date>', 'Only download photos on or after this date (YYYY, YYYY-MM, or YYYY-MM-DD)')
   .option('--to <date>', 'Only download photos on or before this date (YYYY, YYYY-MM, or YYYY-MM-DD)')
-  .option('-m, --media-type <type>', 'Filter by media type: photo or video', 'all')
   .option('-l, --limit <n>', 'Maximum number of photos to download', parseInt)
   .option('-c, --concurrency <n>', 'Number of parallel downloads', parseInt)
   .option('--inspect', 'Open a visible browser with DevTools for each download (for debugging)')
@@ -95,7 +94,6 @@ export const fleeCommand = new Command('flee')
       year?: string;
       from?: string;
       to?: string;
-      mediaType: string;
       limit?: number;
       concurrency?: number;
       inspect?: boolean;
@@ -126,9 +124,6 @@ export const fleeCommand = new Command('flee')
         process.exit(1);
       }
 
-      const mimeTypePrefix =
-        options.mediaType === 'photo' ? 'image/' : options.mediaType === 'video' ? 'video/' : undefined;
-
       const concurrency = options.concurrency ?? 3;
       const outputDir = config.outputDir;
       fs.mkdirSync(outputDir, { recursive: true });
@@ -149,7 +144,6 @@ export const fleeCommand = new Command('flee')
         failedOnly: options.failedOnly,
         from: fromDate,
         to: toDate,
-        mimeTypePrefix,
         limit: options.limit,
       };
       const pending = getPendingPhotos(filter);
@@ -164,7 +158,6 @@ export const fleeCommand = new Command('flee')
       const filterDesc = [
         fromDate && `from ${fromDate.toISOString().slice(0, 10)}`,
         toDate && `to ${toDate.toISOString().slice(0, 10)}`,
-        mimeTypePrefix && `type=${options.mediaType}`,
         options.limit && `limit=${options.limit}`,
       ]
         .filter(Boolean)

@@ -118,10 +118,6 @@ lmpg flee --from 2022-06         # photos from June 2022 onwards
 lmpg flee --to 2023-12-31        # photos up to end of 2023
 lmpg flee --from 2022 --to 2023  # date range
 
-lmpg flee --media-type photo     # photos only, skip videos
-lmpg flee --media-type video     # videos only
-lmpg flee -m photo               # shorthand
-
 lmpg flee --limit 10             # download at most 10 (useful for testing)
 lmpg flee -l 10                  # shorthand
 
@@ -217,6 +213,21 @@ lmpg flee   # continue from where it left off
 
 ---
 
+## Known quirks
+
+### Enumerate count vs your Android library count
+
+`lmpg enumerate` may report more photos than the total shown in the Google Photos Android app. Two reasons:
+
+- **Pagination duplicates** — the Google Photos timeline API occasionally returns the same item on consecutive pages (a pagination overlap artifact). These are deduplicated in the database automatically; `enumerate` reports them as "(N duplicates skipped)".
+- **Archived and shared-album items** — photos you've archived, or photos you've saved from a shared album to your library, appear in the API timeline but may not be counted in Android's main library view.
+
+### `lmpg flee` says "nothing to do" despite enumerate reporting a higher count
+
+If `lmpg enumerate` reports more items than `lmpg status` shows as the database total, those extras are pagination duplicates (see above) — they were returned by the API more than once but only stored once. `lmpg flee` operates on the database, so the behaviour is correct.
+
+---
+
 ## Commands
 
 | Command                               | Short | Description                                              |
@@ -229,7 +240,6 @@ lmpg flee   # continue from where it left off
 | `lmpg flee --failed-only`             | `-f`  | Only retry previously failed photos                      |
 | `lmpg flee --year <year>`             | `-y`  | Filter by year                                           |
 | `lmpg flee --from <date> --to <date>` |       | Filter by date range (YYYY, YYYY-MM, or YYYY-MM-DD)      |
-| `lmpg flee --media-type photo\|video` | `-m`  | Filter by media type                                     |
 | `lmpg flee --limit <n>`               | `-l`  | Cap number of downloads                                  |
 | `lmpg flee --concurrency <n>`         | `-c`  | Parallel downloads (default: 3)                          |
 | `lmpg flee --inspect`                 |       | Headed browser with DevTools                             |

@@ -101,6 +101,21 @@ export const verifyCommand = new Command('verify')
     const spinner = clack.spinner();
     spinner.start(`Verifying ${total.toLocaleString()} downloaded photos…`);
 
+    let stopping = false;
+
+    process.once('SIGINT', () => {
+      stopping = true;
+    });
+
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.on('data', (key: Buffer) => {
+        const k = key.toString();
+        if (k === '' || k === '') stopping = true;
+      });
+    }
+
     const issues: Issue[] = [];
     let checked = 0;
     const pendingBackfills: Array<{ mediaItemId: string; companionPath: string }> = [];
@@ -109,6 +124,7 @@ export const verifyCommand = new Command('verify')
     for (const record of db
       .prepare(`SELECT * FROM photos WHERE status = 'downloaded'`)
       .iterate() as Iterable<PhotoRecord>) {
+      if (stopping) break;
       checked++;
       spinner.message(`Verifying ${checked.toLocaleString()} / ${total.toLocaleString()}…`);
 
@@ -176,26 +192,41 @@ export const verifyCommand = new Command('verify')
       }
     }
 
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+    }
+
     // Apply backfills after the iterator is closed (can't write while iterating)
     for (const { mediaItemId, companionPath } of pendingBackfills) {
       setCompanionPath(mediaItemId, companionPath);
     }
 
-    // Second pass: records marked downloaded that still point at a .zip
-    for (const record of db
-      .prepare(`SELECT * FROM photos WHERE status = 'downloaded' AND dest_path LIKE '%.zip'`)
-      .iterate() as Iterable<PhotoRecord>) {
-      issues.push({ record, reason: 'stale-zip' });
+    // Second pass: records marked downloaded that still point at a .zip (skip if interrupted)
+    if (!stopping) {
+      for (const record of db
+        .prepare(`SELECT * FROM photos WHERE status = 'downloaded' AND dest_path LIKE '%.zip'`)
+        .iterate() as Iterable<PhotoRecord>) {
+        issues.push({ record, reason: 'stale-zip' });
+      }
     }
 
-    spinner.stop(`Verified ${total.toLocaleString()} photos.`);
+    spinner.stop(
+      stopping
+        ? `Stopped after ${checked.toLocaleString()} / ${total.toLocaleString()} photos.`
+        : `Verified ${total.toLocaleString()} photos.`,
+    );
 
     if (pendingBackfills.length > 0) {
       clack.log.info(`Backfilled companion path for ${pendingBackfills.length.toLocaleString()} Live Photo(s).`);
     }
 
     if (issues.length === 0) {
-      clack.log.success(`All ${total.toLocaleString()} photos OK.`);
+      clack.log.success(
+        stopping
+          ? `No issues found in the ${checked.toLocaleString()} photos checked.`
+          : `All ${total.toLocaleString()} photos OK.`,
+      );
       clack.outro('');
       return;
     }
@@ -220,7 +251,7 @@ export const verifyCommand = new Command('verify')
       clack.log.warn(`${label}  ${record.dest_path ?? `(no path) id=${record.media_item_id}`}`);
     }
 
-    clack.log.error(`${issues.length.toLocaleString()} issue(s) found out of ${total.toLocaleString()} checked.`);
+    clack.log.error(`${issues.length.toLocaleString()} issue(s) found out of ${checked.toLocaleString()} checked.`);
 
     if (!opts.dryRun) {
       for (const { record } of issues) {

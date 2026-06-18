@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { launchHeadlessBrowser, saveSession } from '../browser.js';
 import { getAuthPath } from '../paths.js';
 import { enumerateAllMediaItems } from '../api.js';
-import { upsertPhoto } from '../db.js';
+import { upsertPhoto, getStats } from '../db.js';
 
 export const enumerateCommand = new Command('enumerate')
   .description('Scan Google Photos and populate the local database with photo metadata')
@@ -23,15 +23,15 @@ export const enumerateCommand = new Command('enumerate')
     spinner.stop('Browser ready.');
 
     spinner.start('Scanning your photos…');
-    let enumCount = 0;
+    let apiCount = 0;
     try {
       for await (const item of enumerateAllMediaItems(context, n => {
         spinner.message(`Scanning your photos… (${n} found so far)`);
-        enumCount = n;
+        apiCount = n;
       })) {
         const creationTime = item.creationTime ? new Date(item.creationTime).toISOString() : null;
         upsertPhoto(item.id, item.productUrl, creationTime, item.width, item.height, item.expectedSize);
-        if (options.limit && enumCount >= options.limit) break;
+        if (options.limit && apiCount >= options.limit) break;
       }
     } catch (err) {
       spinner.stop('Failed to scan photos.');
@@ -39,7 +39,11 @@ export const enumerateCommand = new Command('enumerate')
       await browser.close();
       process.exit(1);
     }
-    spinner.stop(`Found and indexed ${enumCount.toLocaleString()} photos.`);
+    const { total } = getStats();
+    const dupes = apiCount - total;
+    spinner.stop(
+      `Found and indexed ${total.toLocaleString()} photos.${dupes > 0 ? ` (${dupes.toLocaleString()} duplicates skipped)` : ''}`,
+    );
 
     await saveSession(context);
     await browser.close();

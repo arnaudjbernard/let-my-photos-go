@@ -23,7 +23,6 @@ export interface PhotoFilter {
   failedOnly?: boolean;
   from?: Date;
   to?: Date;
-  mimeTypePrefix?: string;
   limit?: number;
 }
 
@@ -147,10 +146,6 @@ export function getPendingPhotos(filter: PhotoFilter = {}): PhotoRecord[] {
   if (filter.to) {
     conditions.push('creation_time < ?');
     params.push(filter.to.toISOString());
-  }
-  if (filter.mimeTypePrefix) {
-    conditions.push('mime_type LIKE ?');
-    params.push(`${filter.mimeTypePrefix}%`);
   }
 
   let sql = `SELECT * FROM photos WHERE ${conditions.join(' AND ')} ORDER BY creation_time ASC`;
