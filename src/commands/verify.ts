@@ -89,13 +89,11 @@ export const verifyCommand = new Command('verify')
       ).count;
     } catch {
       clack.log.info(`No database found yet. Run \`${lmpg('enumerate')}\` to scan your library first.`);
-      clack.outro('');
       return;
     }
 
     if (total === 0) {
       clack.log.info('No downloaded photos to verify.');
-      clack.outro('');
       return;
     }
 
@@ -217,7 +215,6 @@ export const verifyCommand = new Command('verify')
           ? `No issues found in the ${checked.toLocaleString()} photos checked.`
           : `All ${total.toLocaleString()} photos OK.`,
       );
-      clack.outro('');
       return;
     }
 
@@ -251,6 +248,4 @@ export const verifyCommand = new Command('verify')
     } else {
       clack.log.info(`Dry run — records not reset. Run \`${lmpg('verify')}\` without --dry-run to fix.`);
     }
-
-    clack.outro('');
   });
