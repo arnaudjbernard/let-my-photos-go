@@ -3,6 +3,8 @@ import { getConfigPath } from './paths.js';
 
 export interface Config {
   outputDir: string;
+  googleUserId?: string;
+  googleUserToken?: string;
 }
 
 export function readConfig(): Config | null {
