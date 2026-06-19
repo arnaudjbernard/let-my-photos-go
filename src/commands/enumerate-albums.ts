@@ -4,11 +4,12 @@ import * as fs from 'fs';
 import { launchHeadlessBrowser, saveSession } from '../browser.js';
 import { getAuthPath } from '../paths.js';
 import { readConfig } from '../config.js';
-import { extractBatchParams, enumerateAllAlbums, fetchAlbumPhotoSamples, type Album } from '../api.js';
+import { extractBatchParams, enumerateAllAlbums, fetchAlbumPhotos, type Album } from '../api.js';
 import {
   upsertAlbum,
   upsertAlbumPhotos,
   upsertAlbumPhoto,
+  ensurePhotoRecord,
   deletePendingAlbumPhotos,
   getTimelinePhotoIds,
 } from '../db.js';
@@ -84,10 +85,10 @@ export const enumerateAlbumsCommand = new Command('enumerate-albums')
       const album = albums[i];
       spinner.message(`[${i + 1}/${albums.length}] ${album.title}…`);
 
-      const samples = await fetchAlbumPhotoSamples(context, params, album);
+      const photos = await fetchAlbumPhotos(context, params, album);
 
       // Filter samples based on flag
-      const filteredSamples = samples.filter(s => {
+      const filteredPhotos = photos.filter(s => {
         if (ownerFlag === 'all') return true;
         if (s.uploaderToken === googleUserToken) return true;
         if (ownerFlag === 'foreign-saved') return savedIds.has(s.mediaItemId);
@@ -95,18 +96,21 @@ export const enumerateAlbumsCommand = new Command('enumerate-albums')
       });
 
       upsertAlbum(album.albumId, album.title, album.photoCount);
-      upsertAlbumPhotos(album.albumId, filteredSamples);
-      totalPhotoPersisted += filteredSamples.length;
+      upsertAlbumPhotos(album.albumId, filteredPhotos);
+      totalPhotoPersisted += filteredPhotos.length;
 
-      // For --keep-all: upsert others' photos into photos table so flee downloads them
-      if (ownerFlag === 'all') {
-        for (const s of filteredSamples) {
-          if (s.uploaderToken !== googleUserToken) {
-            const googleUrl = `https://photos.google.com/share/${album.albumId}/photo/${s.mediaItemId}`;
-            const creationTime = s.creationTime !== null ? new Date(s.creationTime).toISOString() : null;
-            upsertAlbumPhoto(s.mediaItemId, googleUrl, creationTime);
-            newPendingCount++;
-          }
+      for (const s of filteredPhotos) {
+        const creationTime = s.creationTime !== null ? new Date(s.creationTime).toISOString() : null;
+        const isOwn = s.uploaderToken === googleUserToken;
+        if (!isOwn) {
+          // Foreign photo: upsert with shared album URL so flee can download it
+          const googleUrl = `https://photos.google.com/share/${album.albumId}/photo/${s.mediaItemId}`;
+          upsertAlbumPhoto(s.mediaItemId, googleUrl, creationTime);
+          newPendingCount++;
+        } else {
+          // Own photo: just ensure a photos row exists in case the timeline enumerate missed it.
+          // flee falls back to photos.google.com/photo/<id> when google_url is null.
+          ensurePhotoRecord(s.mediaItemId, creationTime);
         }
       }
     }

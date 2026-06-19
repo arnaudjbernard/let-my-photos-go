@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import * as clack from '@clack/prompts';
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
 import * as path from 'path';
 import { readConfig } from '../config.js';
 import { getOrganizeData } from '../db.js';
@@ -9,10 +9,6 @@ function sanitizeTitle(title: string): string {
   return title.replace(/[/\\:*?"<>|]/g, '-').trim();
 }
 
-function symlinkRelative(target: string, linkPath: string): void {
-  const rel = path.relative(path.dirname(linkPath), target);
-  fs.symlinkSync(rel, linkPath);
-}
 
 export const organizeCommand = new Command('organize')
   .description('Create Albums/ folder structure with symlinks to downloaded photos')
@@ -28,28 +24,34 @@ export const organizeCommand = new Command('organize')
     }
     const outputDir = config.outputDir;
 
+    const spinner = clack.spinner();
+    spinner.start('Loading album data…');
+
     const albums = getOrganizeData();
     if (albums.length === 0) {
-      clack.log.error(`No album data found. Run \`${lmpg('enumerate-albums')}\` first.`);
+      spinner.stop('No album data found.');
+      clack.log.error(`Run \`${lmpg('enumerate-albums')}\` first.`);
       process.exit(1);
     }
 
-    const spinner = clack.spinner();
-    spinner.start('Organizing albums…');
+    spinner.message('Organizing albums…');
 
     let symlinked = 0;
     let skipped = 0;
+    let fixed = 0;
     let notDownloaded = 0;
+    const failedAlbums: { title: string; error: string }[] = [];
 
     for (const album of albums) {
       const safeTitle = sanitizeTitle(album.title);
       const albumDir = path.join(outputDir, 'Albums', safeTitle);
-      fs.mkdirSync(albumDir, { recursive: true });
+      await fs.mkdir(albumDir, { recursive: true });
 
       notDownloaded += album.totalInAlbum - album.photos.length;
 
       // Track filenames used within this album to handle collisions
       const usedNames = new Set<string>();
+      let albumFailed = false;
 
       for (const photo of album.photos) {
         const src = path.join(outputDir, photo.destPath);
@@ -66,34 +68,68 @@ export const organizeCommand = new Command('organize')
 
         const linkPath = path.join(albumDir, candidate);
 
-        if (fs.existsSync(linkPath)) {
-          skipped++;
-          continue;
+        const expectedRel = path.relative(path.dirname(linkPath), src);
+        let replacing = false;
+
+        try {
+          const stat = await fs.lstat(linkPath);
+          if (!stat.isSymbolicLink()) {
+            clack.log.warn(`Skipping ${candidate} in "${album.title}" — a non-symlink file already exists at that path.`);
+            skipped++;
+            continue;
+          }
+          const actual = await fs.readlink(linkPath);
+          if (actual === expectedRel) {
+            skipped++;
+            continue;
+          }
+          await fs.unlink(linkPath);
+          replacing = true;
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+            albumFailed = true;
+            failedAlbums.push({ title: album.title, error: (err as NodeJS.ErrnoException).message });
+            break;
+          }
         }
 
         try {
-          symlinkRelative(src, linkPath);
-          symlinked++;
-        } catch {
-          // Fallback to copy if symlinks fail
-          fs.copyFileSync(src, linkPath);
-          symlinked++;
+          await fs.symlink(expectedRel, linkPath);
+          if (replacing) fixed++; else symlinked++;
+        } catch (err) {
+          albumFailed = true;
+          failedAlbums.push({ title: album.title, error: (err as NodeJS.ErrnoException).message });
+          break;
         }
       }
 
-      spinner.message(`Organizing… ${album.title}`);
+      if (!albumFailed) {
+        spinner.message(`Organizing… ${album.title}`);
+      }
     }
 
     spinner.stop('Done.');
 
-    clack.log.info(
-      `${albums.length} albums — ${symlinked} symlinked, ${skipped} already exist, ${notDownloaded} not yet downloaded.`,
-    );
+    const parts = [
+      `${symlinked} symlinked`,
+      fixed > 0 ? `${fixed} fixed` : null,
+      `${skipped} already exist`,
+      `${notDownloaded} not yet downloaded`,
+    ].filter(Boolean).join(', ');
+    clack.log.info(`${albums.length} albums — ${parts}.`);
 
     if (notDownloaded > 0) {
       clack.log.warn(
         `Run \`${lmpg('flee')}\` to download missing photos, then re-run \`${lmpg('organize')}\`.`,
       );
+    }
+
+    if (failedAlbums.length > 0) {
+      clack.log.error(`${failedAlbums.length} album(s) failed to organize (symlink error):`);
+      for (const { title, error } of failedAlbums) {
+        clack.log.error(`  • ${title}: ${error}`);
+      }
+      process.exit(1);
     }
 
     clack.outro(`Albums written to ${path.join(outputDir, 'Albums')}`);

@@ -191,7 +191,7 @@ export function upsertAlbum(albumId: string, title: string, photoCount: number):
 
 export function upsertAlbumPhotos(
   albumId: string,
-  samples: { mediaItemId: string; uploaderToken: string | null }[],
+  photos: { mediaItemId: string; uploaderToken: string | null }[],
 ): void {
   const db = getDb();
   db.transaction(() => {
@@ -199,8 +199,15 @@ export function upsertAlbumPhotos(
     const insert = db.prepare(
       `INSERT OR IGNORE INTO album_photos (album_id, media_item_id, uploader_token) VALUES (?, ?, ?)`,
     );
-    for (const s of samples) insert.run(albumId, s.mediaItemId, s.uploaderToken);
+    for (const s of photos) insert.run(albumId, s.mediaItemId, s.uploaderToken);
   })();
+}
+
+export function ensurePhotoRecord(mediaItemId: string, creationTime: string | null): void {
+  const db = getDb();
+  db.prepare(
+    `INSERT OR IGNORE INTO photos (media_item_id, creation_time, source) VALUES (?, ?, 'album')`,
+  ).run(mediaItemId, creationTime);
 }
 
 export function upsertAlbumPhoto(

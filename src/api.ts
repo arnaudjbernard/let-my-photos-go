@@ -22,7 +22,7 @@ export interface Album {
   members: AlbumMember[]; // all members including the logged-in user
 }
 
-export interface PhotoSample {
+export interface AlbumPhoto {
   mediaItemId: string;
   uploaderToken: string | null; // uploader auth token from snAcKc photo[6][0]
   creationTime: number | null;  // ms timestamp from snAcKc photo[2]
@@ -281,12 +281,12 @@ export async function* enumerateAllAlbums(context: BrowserContext, params: Batch
 
 // RPC snAcKc: all photos in an album with per-photo uploader token at photo[6][0].
 // Paginates until all photos are returned.
-export async function fetchAlbumPhotoSamples(
+export async function fetchAlbumPhotos(
   context: BrowserContext,
   params: BatchParams,
   album: Album,
-): Promise<PhotoSample[]> {
-  const samples: PhotoSample[] = [];
+): Promise<AlbumPhoto[]> {
+  const result: AlbumPhoto[] = [];
   let continuationToken: string | null = null;
 
   while (true) {
@@ -297,7 +297,7 @@ export async function fetchAlbumPhotoSamples(
       headers: { ...BATCH_HEADERS, Referer: `https://photos.google.com/share/${album.albumId}` },
       form: { 'f.req': freqBody, at: params.at },
     });
-    if (!response.ok()) return samples;
+    if (!response.ok()) return result;
 
     const inner = findRpcInner(await response.text(), 'snAcKc') as unknown[][];
     const photos = (Array.isArray(inner[1]) ? inner[1] : []) as unknown[][];
@@ -309,14 +309,14 @@ export async function fetchAlbumPhotoSamples(
       const creationTime = (p[2] as number | null) ?? null;
       const uploaderArr = Array.isArray(p[6]) ? (p[6] as unknown[]) : null;
       const uploaderToken = uploaderArr ? (uploaderArr[0] as string | null) : null;
-      samples.push({ mediaItemId, uploaderToken, creationTime });
+      result.push({ mediaItemId, uploaderToken, creationTime });
     }
 
     if (!nextToken || photos.length === 0) break;
     continuationToken = nextToken;
   }
 
-  return samples;
+  return result;
 }
 
 // RPC snAcKc: paginated list of mediaItemIds within a single album.
