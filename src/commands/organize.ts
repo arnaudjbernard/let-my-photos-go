@@ -64,11 +64,11 @@ export const organizeCommand = new Command('organize')
         let { name, ext } = path.parse(photo.filename);
         let candidate = photo.filename;
         let counter = 1;
-        while (usedNames.has(candidate)) {
+        while (usedNames.has(candidate.toLowerCase())) {
           candidate = `${name}_${counter}${ext}`;
           counter++;
         }
-        usedNames.add(candidate);
+        usedNames.add(candidate.toLowerCase());
 
         const linkPath = path.join(albumDir, candidate);
 

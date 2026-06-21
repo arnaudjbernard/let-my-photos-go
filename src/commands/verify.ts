@@ -5,6 +5,7 @@ import * as path from 'path';
 import { getDb, markVerified, resetToPending, setCompanionPath } from '../db.js';
 import type { PhotoRecord } from '../db.js';
 import { readConfig } from '../config.js';
+import { runWithConcurrency } from '../util.js';
 
 type IssueReason =
   | 'missing'
@@ -133,10 +134,12 @@ export const verifyCommand = new Command('verify')
     const pendingVerifies: string[] = [];
 
     const db = getDb();
-    for (const record of db
+    const records = db
       .prepare(`SELECT * FROM photos WHERE status = 'downloaded' AND verified_at IS NULL`)
-      .iterate() as Iterable<PhotoRecord>) {
-      if (stopping) break;
+      .all() as PhotoRecord[];
+
+    await runWithConcurrency(records, 20, async (record) => {
+      if (stopping) return;
       checked++;
       spinner.message(`Verifying ${checked.toLocaleString()} / ${total.toLocaleString()}…`);
 
@@ -145,23 +148,23 @@ export const verifyCommand = new Command('verify')
       // --- stale zip ---
       if (record.dest_path?.endsWith('.zip')) {
         issues.push({ record, reason: 'stale-zip' });
-        continue;
+        return;
       }
 
       // --- primary file ---
       if (!record.dest_path) {
         issues.push({ record, reason: 'missing' });
-        continue;
+        return;
       }
       const absFile = absPath(record.dest_path, outputDir);
       if (!(await fileExists(absFile))) {
         issues.push({ record, reason: 'missing' });
-        continue;
+        return;
       }
       const actualSize = await fileSize(absFile);
       if (actualSize === 0) {
         issues.push({ record, reason: 'empty' });
-        continue;
+        return;
       }
       // --- companion discovery (before size check so combined size can be tested) ---
       let companionAbs = record.companion_path ? absPath(record.companion_path, outputDir) : null;
@@ -186,7 +189,7 @@ export const verifyCommand = new Command('verify')
 
       if (!(await checkMagicBytes(absFile))) {
         issues.push({ record, reason: 'corrupt' });
-        continue;
+        return;
       }
 
       // --- companion checks ---
@@ -203,7 +206,7 @@ export const verifyCommand = new Command('verify')
       if (issues.length === issuesBefore) {
         pendingVerifies.push(record.media_item_id);
       }
-    }
+    });
 
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(false);
