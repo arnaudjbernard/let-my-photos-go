@@ -1,6 +1,6 @@
 {
   "name": "let-my-photos-go",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "🕊️ Because your photos deserve to be free",
   "bin": {
