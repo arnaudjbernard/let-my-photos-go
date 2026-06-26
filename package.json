@@ -1,5 +1,5 @@
 {
-  "name": "@gabrielgrijincu/let-my-photos-go",
+  "name": "let-my-photos-go",
   "version": "0.1.0",
   "type": "module",
   "description": "🕊️ Because your photos deserve to be free",
@@ -29,9 +29,6 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gabrielgrijincu/let-my-photos-go.git"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
   },
   "dependencies": {
     "@clack/prompts": "0.9.1",

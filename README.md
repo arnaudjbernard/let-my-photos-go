@@ -26,27 +26,8 @@ The Google Photos API is used for **enumeration** (listing all your photos and t
 
 ## Installation
 
-**One-time: authenticate with GitHub Packages.**
-
-Generate a token at <https://github.com/settings/tokens> with the `read:packages` scope, then log in:
-
 ```bash
-npm login --registry=https://npm.pkg.github.com
-# Username: your GitHub username
-# Password: your token
-```
-
-Alternatively, add the token directly to `~/.npmrc`:
-
-```
-@gabrielgrijincu:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=YOUR_TOKEN
-```
-
-**Install the package and the Playwright browser:**
-
-```bash
-npm install -g @gabrielgrijincu/let-my-photos-go
+npm install -g let-my-photos-go
 npx playwright install chromium
 ```
 
