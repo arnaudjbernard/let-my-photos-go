@@ -189,6 +189,41 @@ lmpg flee-albums -c 5            # shorthand
 lmpg flee-albums --inspect       # headed browser with DevTools (for debugging)
 ```
 
+### Optional: List photos not in any album (`lmpg list-no-album`)
+
+```bash
+lmpg list-no-album
+```
+
+Finds and lists all files in your library that are **not** part of any album, sorted by file size (largest first). This is useful for identifying large orphan videos and photos to clean up.
+
+* **Size estimation:** For files not yet downloaded, sizes are estimated based on resolution and video duration (bitrate estimate), making this extremely fast and accurate without downloading.
+* **Quota filtering:** By default, it lists all orphan files. Pass `--only-owned` to hide files shared with you that do not consume your Google storage quota.
+
+```bash
+lmpg list-no-album --limit 50       # show only the top 50 largest files
+lmpg list-no-album --only-owned     # only show files that consume your storage quota
+lmpg list-no-album --csv            # output as CSV
+lmpg list-no-album --json           # output as JSON
+```
+
+### Optional: List photos in albums (`lmpg list-album`)
+
+```bash
+lmpg list-album
+```
+
+The opposite of `list-no-album`. Lists all files that **are** part of at least one album, sorted by size (largest first). 
+
+Each printed entry shows a comma-separated list of the albums it belongs to (e.g. `Albums: Family, Vacation`). Supports the exact same options:
+
+```bash
+lmpg list-album --limit 50
+lmpg list-album --only-owned
+lmpg list-album --csv
+lmpg list-album --json
+```
+
 ---
 
 ## Profiles

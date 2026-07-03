@@ -6,6 +6,9 @@ export interface MediaItem {
   creationTime: number | null; // Unix ms timestamp
   width: number | null;
   height: number | null;
+  size: number | null;
+  ownerToken: string | null;
+  durationMs: number | null;
 }
 
 export interface AlbumMember {
@@ -194,6 +197,39 @@ export async function* enumerateAllMediaItems(
       const meta = Array.isArray(arr[1]) ? (arr[1] as unknown[]) : null;
       const creationTime = arr[2] as number | null;
 
+      const width = meta ? ((meta[1] as number | null) ?? null) : null;
+      const height = meta ? ((meta[2] as number | null) ?? null) : null;
+
+      // Detect if it is a video and extract duration in ms
+      let durationMs: number | null = null;
+      const map = arr[9] || arr[10];
+      if (map && typeof map === 'object') {
+        for (const key of Object.keys(map)) {
+          const val = (map as Record<string, unknown>)[key];
+          if (Array.isArray(val) && val.length >= 4) {
+            const duration = val[0];
+            const w = val[2];
+            const h = val[3];
+            if (typeof duration === 'number' && duration > 0 && typeof w === 'number' && typeof h === 'number') {
+              durationMs = duration;
+              break;
+            }
+          }
+        }
+      }
+
+      // Compute estimated size
+      let size: number | null = null;
+      if (width && height) {
+        if (durationMs) {
+          // Video: estimate size using typical bitrate (e.g. 15 Mbps for 1080p, scaling with resolution)
+          size = Math.round((width * height * 0.9) * (durationMs / 1000));
+        } else {
+          // Photo: estimate size using typical compression (~0.25 bytes per pixel)
+          size = Math.round(width * height * 0.25);
+        }
+      }
+
       totalFetched++;
       onProgress?.(totalFetched);
 
@@ -201,8 +237,11 @@ export async function* enumerateAllMediaItems(
         id,
         productUrl: `https://photos.google.com/photo/${id}`,
         creationTime: creationTime ?? null,
-        width: meta ? ((meta[1] as number | null) ?? null) : null,
-        height: meta ? ((meta[2] as number | null) ?? null) : null,
+        width,
+        height,
+        size,
+        ownerToken: typeof arr[3] === 'string' ? arr[3] : null,
+        durationMs,
       };
     }
 

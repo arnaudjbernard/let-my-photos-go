@@ -16,6 +16,9 @@ export interface PhotoRecord {
   companion_path: string | null;
   width: number | null;
   height: number | null;
+  size: number | null;
+  owner_token: string | null;
+  duration: number | null;
   created_at: string;
   verified_at: string | null;
 }
@@ -64,6 +67,9 @@ function migrate(db: Database.Database): void {
   if (!cols.includes('height')) db.exec(`ALTER TABLE photos ADD COLUMN height INTEGER`);
   if (!cols.includes('verified_at')) db.exec(`ALTER TABLE photos ADD COLUMN verified_at TEXT`);
   if (!cols.includes('source')) db.exec(`ALTER TABLE photos ADD COLUMN source TEXT NOT NULL DEFAULT 'timeline'`);
+  if (!cols.includes('size')) db.exec(`ALTER TABLE photos ADD COLUMN size INTEGER`);
+  if (!cols.includes('owner_token')) db.exec(`ALTER TABLE photos ADD COLUMN owner_token TEXT`);
+  if (!cols.includes('duration')) db.exec(`ALTER TABLE photos ADD COLUMN duration INTEGER`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS albums (
@@ -90,19 +96,27 @@ export function upsertPhoto(
   creationTime: string | null,
   width: number | null = null,
   height: number | null = null,
+  size: number | null = null,
+  ownerToken: string | null = null,
+  duration: number | null = null,
+  mimeType: string | null = null,
 ): void {
   const db = getDb();
   db.prepare(
     `
-    INSERT INTO photos (media_item_id, google_url, creation_time, width, height)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO photos (media_item_id, google_url, creation_time, width, height, size, owner_token, duration, mime_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (media_item_id) DO UPDATE SET
       google_url = excluded.google_url,
       creation_time = excluded.creation_time,
       width = excluded.width,
-      height = excluded.height
+      height = excluded.height,
+      size = excluded.size,
+      owner_token = excluded.owner_token,
+      duration = excluded.duration,
+      mime_type = excluded.mime_type
   `,
-  ).run(mediaItemId, googleUrl, creationTime, width, height);
+  ).run(mediaItemId, googleUrl, creationTime, width, height, size, ownerToken, duration, mimeType);
 }
 
 export function markDownloaded(mediaItemId: string, destPath: string, filename: string, companionPath?: string): void {

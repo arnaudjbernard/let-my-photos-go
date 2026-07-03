@@ -4,8 +4,16 @@ import { getAuthPath } from './paths';
 export async function launchHeadedBrowser(
   storageState?: string,
 ): Promise<{ browser: Browser; context: BrowserContext }> {
-  const browser = await chromium.launch({ headless: false });
-  const context = await browser.newContext(storageState ? { storageState } : {});
+  const browser = await chromium.launch({
+    headless: false,
+    args: ['--disable-blink-features=AutomationControlled']
+  });
+  const context = await browser.newContext({
+    ...(storageState ? { storageState } : {}),
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    viewport: { width: 1280, height: 800 },
+    locale: 'en-US',
+  });
   return { browser, context };
 }
 
@@ -14,9 +22,14 @@ export async function launchHeadlessBrowser(
 ): Promise<{ browser: Browser; context: BrowserContext }> {
   const browser = await chromium.launch({
     headless: !opts.inspect,
-    // args: opts.inspect ? ['--auto-open-devtools-for-tabs'] : [],
+    args: ['--disable-blink-features=AutomationControlled']
   });
-  const context = await browser.newContext({ storageState: getAuthPath() });
+  const context = await browser.newContext({
+    storageState: getAuthPath(),
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    viewport: { width: 1280, height: 800 },
+    locale: 'en-US',
+  });
   return { browser, context };
 }
 
