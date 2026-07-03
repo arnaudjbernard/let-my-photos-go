@@ -224,6 +224,79 @@ lmpg list-album --csv
 lmpg list-album --json
 ```
 
+### Optional: Inspect a photo (`lmpg inspect-photo`)
+
+```bash
+lmpg inspect-photo <url-or-id>
+```
+
+Inspects the metadata of a specific photo or video by its ID or direct Google Photos URL (e.g. from the storage quota page). It checks the database and reports whether the file is indexed, its size, date, download status, and lists all albums the file is a part of.
+
+```bash
+lmpg inspect-photo "https://photos.google.com/photo/AF1Qip..."
+lmpg inspect-photo AF1Qip...
+```
+
+### Optional: Probe exact sizes and filenames (`lmpg probe-sizes`)
+
+```bash
+lmpg probe-sizes
+```
+
+Automates requesting download headers for your largest pending files and instantly canceling the downloads. This lets you fetch the **exact actual file size** and **original filename** for your largest items without consuming any of your internet bandwidth or disk space to download them.
+
+* **Incremental:** By default, it automatically skips any items that have already been probed.
+* Runs with options like `--limit` to specify how many files to probe (default: 200).
+* Highly recommended: use with `--only-owned` to completely skip shared files that don't consume your quota.
+
+```bash
+lmpg probe-sizes --limit 200      # probe sizes for the top 200 largest pending items
+lmpg probe-sizes --only-owned     # only probe files that consume your storage quota
+lmpg probe-sizes --concurrency 5  # parallel page threads (default: 3)
+lmpg probe-sizes --force          # force reprobing of all items, refreshing cached metadata
+```
+
+---
+
+## Storage Cleanup Workflow (Finding & Auditing Large Orphan Files)
+
+This workflow helps you find large photos and videos that are **not in any album** (orphan files) so you can clean up space on your Google account. It fetches exact sizes and quota details without having to download the actual files.
+
+### 1. Build the tool
+If you've made changes or just cloned the repository, build the codebase:
+```bash
+npm run build
+```
+
+### 2. Authenticate (with a specific profile if needed)
+Log in to your Google Photos account (using `-p <name>` to separate profiles if you manage multiple accounts):
+```bash
+lmpg -p second_account auth
+```
+
+### 3. Scan library timeline and albums
+First, scan all photos on your timeline (this also cleans up any deleted or trashed files from your database):
+```bash
+lmpg -p second_account enumerate
+```
+Then, scan all album memberships:
+```bash
+lmpg -p second_account enumerate-albums
+```
+
+### 4. Probe exact sizes and storage quota (Bandwidth-Free)
+Probe the exact file sizes, filenames, and quota usage (Original vs. Storage Saver vs. Shared 0-quota) for your largest estimated items. This automatically cancels downloads instantly so **no files are actually downloaded** and **skips already-probed items by default**:
+```bash
+lmpg -p second_account probe-sizes --limit 200
+lmpg -p second_account probe-sizes --limit 200 --force  # to re-probe/refresh all metadata
+```
+
+### 5. List largest orphans sorted by actual quota usage
+List your largest orphan files. The list will sort by the **actual quota consumed** on your Google account (with 0-quota shared files sorted to the very bottom):
+```bash
+lmpg -p second_account list-no-album --limit 50
+```
+
 ---
 
 ## Profiles

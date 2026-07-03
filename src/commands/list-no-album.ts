@@ -117,7 +117,7 @@ export const listNoAlbumCommand = new Command('list-no-album')
         } else if (options.json) {
           console.log(JSON.stringify([]));
         } else if (options.csv) {
-          console.log('Filename,CreationTime,Status,SizeBytes,IsEstimated,GoogleUrl');
+          console.log('Filename,CreationTime,Status,SizeBytes,SizeType,QuotaBytes,BackupQuality,GoogleUrl');
         }
         return;
       }
@@ -130,7 +130,9 @@ export const listNoAlbumCommand = new Command('list-no-album')
         creation_time: string | null;
         status: string;
         sizeBytes: number;
-        isEstimated: boolean;
+        sizeType: 'Actual' | 'Probed' | 'Estimated';
+        quotaBytes: number | null;
+        backupQuality: string | null;
       }
 
       const orphans: OrphanInfo[] = [];
@@ -146,14 +148,14 @@ export const listNoAlbumCommand = new Command('list-no-album')
           }
 
           let sizeBytes = 0;
-          let isEstimated = true;
+          let sizeType: 'Actual' | 'Probed' | 'Estimated' = 'Estimated';
 
           if (record.size !== null && record.size !== undefined && record.size > 0) {
             sizeBytes = record.size;
-            isEstimated = false; // Actual size from Google Photos metadata!
+            sizeType = (record.filename && record.filename !== '') ? 'Probed' : 'Estimated';
           } else if (record.width && record.height) {
             sizeBytes = Math.round(record.width * record.height * 0.25);
-            isEstimated = true;
+            sizeType = 'Estimated';
           }
 
           orphans.push({
@@ -164,14 +166,16 @@ export const listNoAlbumCommand = new Command('list-no-album')
             creation_time: record.creation_time,
             status: record.status,
             sizeBytes,
-            isEstimated,
+            sizeType,
+            quotaBytes: record.quota_bytes,
+            backupQuality: record.backup_quality,
           });
           continue;
         }
 
         let sizeBytes = 0;
         let companionSizeBytes = 0;
-        let isEstimated = false;
+        let sizeType: 'Actual' | 'Probed' | 'Estimated' = 'Actual';
 
         if (record.dest_path) {
           const absFile = absPath(record.dest_path, outputDir);
@@ -180,12 +184,12 @@ export const listNoAlbumCommand = new Command('list-no-album')
               sizeBytes = fs.statSync(absFile).size;
             } else if (record.size !== null && record.size !== undefined && record.size > 0) {
               sizeBytes = record.size;
-              isEstimated = true; // Fallback to DB metadata size because file is missing from disk
+              sizeType = 'Probed';
             }
           } catch {
             if (record.size !== null && record.size !== undefined && record.size > 0) {
               sizeBytes = record.size;
-              isEstimated = true;
+              sizeType = 'Probed';
             }
           }
         }
@@ -197,7 +201,7 @@ export const listNoAlbumCommand = new Command('list-no-album')
               companionSizeBytes = fs.statSync(absCompanion).size;
             }
           } catch {
-            // Companion missing or unreadable
+            // Companion missing
           }
         }
 
@@ -209,12 +213,17 @@ export const listNoAlbumCommand = new Command('list-no-album')
           creation_time: record.creation_time,
           status: record.status,
           sizeBytes: sizeBytes + companionSizeBytes,
-          isEstimated,
+          sizeType,
+          quotaBytes: record.quota_bytes,
+          backupQuality: record.backup_quality,
         });
       }
 
-      // Sort: largest size first
-      orphans.sort((a, b) => b.sizeBytes - a.sizeBytes);
+      // Sort: largest effective quota first
+      const getEffectiveQuota = (o: OrphanInfo) => {
+        return (o.quotaBytes !== null && o.quotaBytes !== undefined) ? o.quotaBytes : o.sizeBytes;
+      };
+      orphans.sort((a, b) => getEffectiveQuota(b) - getEffectiveQuota(a));
 
       // Apply limit if specified
       let displayOrphans = orphans;
@@ -228,10 +237,10 @@ export const listNoAlbumCommand = new Command('list-no-album')
       }
 
       if (options.csv) {
-        console.log('Filename,CreationTime,Status,SizeBytes,IsEstimated,GoogleUrl');
+        console.log('Filename,CreationTime,Status,SizeBytes,SizeType,QuotaBytes,BackupQuality,GoogleUrl');
         for (const o of displayOrphans) {
           const creationStr = o.creation_time || '';
-          console.log(`"${o.filename}","${creationStr}","${o.status}",${o.sizeBytes},${o.isEstimated},"${o.google_url}"`);
+          console.log(`"${o.filename}","${creationStr}","${o.status}",${o.sizeBytes},"${o.sizeType}",${o.quotaBytes || ''},"${o.backupQuality || ''}","${o.google_url}"`);
         }
         return;
       }
@@ -243,14 +252,15 @@ export const listNoAlbumCommand = new Command('list-no-album')
         console.log('\nSorted by size (largest first):');
         console.log('--------------------------------------------------------------------------------');
         for (const o of displayOrphans) {
-          let sizeStr = '';
-          if (o.isEstimated) {
-            sizeStr = o.sizeBytes > 0 ? `~ ${formatBytes(o.sizeBytes)} (Estimated)` : 'Unknown';
-          } else {
-            sizeStr = `${formatBytes(o.sizeBytes)} (Actual)`;
+          let sizeLine = `Size:     ${formatBytes(o.sizeBytes)} (${o.sizeType === 'Actual' ? 'Download' : o.sizeType})`;
+          if (o.quotaBytes !== null && o.quotaBytes !== undefined) {
+            if (o.quotaBytes === 0) {
+              sizeLine += ` | Quota: 0 Bytes (Shared)`;
+            } else {
+              sizeLine += ` | Quota: ${formatBytes(o.quotaBytes)} (${o.backupQuality || 'saver'})`;
+            }
           }
-
-          console.log(`Size:     ${sizeStr}`);
+          console.log(sizeLine);
           console.log(`Name:     ${o.filename}`);
           console.log(`Status:   ${o.status}`);
           console.log(`Date:     ${o.creation_time || 'Unknown'}`);
@@ -267,7 +277,7 @@ export const listNoAlbumCommand = new Command('list-no-album')
         clack.log.warn(`Note: Filtered out ${totalFilteredShared.toLocaleString()} shared items that do not consume your quota.`);
       }
 
-      const totalUnestimatedOrphansWithoutResolution = orphans.filter(o => o.isEstimated && o.sizeBytes === 0).length;
+      const totalUnestimatedOrphansWithoutResolution = orphans.filter(o => o.sizeBytes === 0).length;
       if (totalUnestimatedOrphansWithoutResolution > 0) {
         clack.log.warn(`Note: ${totalUnestimatedOrphansWithoutResolution} items have unknown resolution and size. Run \`${lmpg('flee')}\` to download and audit them.`);
       }

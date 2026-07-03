@@ -124,7 +124,7 @@ export const listAlbumCommand = new Command('list-album')
         } else if (options.json) {
           console.log(JSON.stringify([]));
         } else if (options.csv) {
-          console.log('Filename,Albums,CreationTime,Status,SizeBytes,IsEstimated,GoogleUrl');
+          console.log('Filename,Albums,CreationTime,Status,SizeBytes,SizeType,QuotaBytes,BackupQuality,GoogleUrl');
         }
         return;
       }
@@ -138,7 +138,9 @@ export const listAlbumCommand = new Command('list-album')
         creation_time: string | null;
         status: string;
         sizeBytes: number;
-        isEstimated: boolean;
+        sizeType: 'Actual' | 'Probed' | 'Estimated';
+        quotaBytes: number | null;
+        backupQuality: string | null;
       }
 
       const listItems: AlbumPhotoInfo[] = [];
@@ -154,14 +156,14 @@ export const listAlbumCommand = new Command('list-album')
           }
 
           let sizeBytes = 0;
-          let isEstimated = true;
+          let sizeType: 'Actual' | 'Probed' | 'Estimated' = 'Estimated';
 
           if (record.size !== null && record.size !== undefined && record.size > 0) {
             sizeBytes = record.size;
-            isEstimated = false;
+            sizeType = (record.filename && record.filename !== '') ? 'Probed' : 'Estimated';
           } else if (record.width && record.height) {
             sizeBytes = Math.round(record.width * record.height * 0.25);
-            isEstimated = true;
+            sizeType = 'Estimated';
           }
 
           listItems.push({
@@ -173,14 +175,16 @@ export const listAlbumCommand = new Command('list-album')
             creation_time: record.creation_time,
             status: record.status,
             sizeBytes,
-            isEstimated,
+            sizeType,
+            quotaBytes: record.quota_bytes,
+            backupQuality: record.backup_quality,
           });
           continue;
         }
 
         let sizeBytes = 0;
         let companionSizeBytes = 0;
-        let isEstimated = false;
+        let sizeType: 'Actual' | 'Probed' | 'Estimated' = 'Actual';
 
         if (record.dest_path) {
           const absFile = absPath(record.dest_path, outputDir);
@@ -189,12 +193,12 @@ export const listAlbumCommand = new Command('list-album')
               sizeBytes = fs.statSync(absFile).size;
             } else if (record.size !== null && record.size !== undefined && record.size > 0) {
               sizeBytes = record.size;
-              isEstimated = true;
+              sizeType = 'Probed';
             }
           } catch {
             if (record.size !== null && record.size !== undefined && record.size > 0) {
               sizeBytes = record.size;
-              isEstimated = true;
+              sizeType = 'Probed';
             }
           }
         }
@@ -219,12 +223,17 @@ export const listAlbumCommand = new Command('list-album')
           creation_time: record.creation_time,
           status: record.status,
           sizeBytes: sizeBytes + companionSizeBytes,
-          isEstimated,
+          sizeType,
+          quotaBytes: record.quota_bytes,
+          backupQuality: record.backup_quality,
         });
       }
 
-      // Sort: largest size first
-      listItems.sort((a, b) => b.sizeBytes - a.sizeBytes);
+      // Sort: largest effective quota first
+      const getEffectiveQuota = (o: AlbumPhotoInfo) => {
+        return (o.quotaBytes !== null && o.quotaBytes !== undefined) ? o.quotaBytes : o.sizeBytes;
+      };
+      listItems.sort((a, b) => getEffectiveQuota(b) - getEffectiveQuota(a));
 
       // Apply limit if specified
       let displayItems = listItems;
@@ -238,10 +247,10 @@ export const listAlbumCommand = new Command('list-album')
       }
 
       if (options.csv) {
-        console.log('Filename,Albums,CreationTime,Status,SizeBytes,IsEstimated,GoogleUrl');
+        console.log('Filename,Albums,CreationTime,Status,SizeBytes,SizeType,QuotaBytes,BackupQuality,GoogleUrl');
         for (const o of displayItems) {
           const creationStr = o.creation_time || '';
-          console.log(`"${o.filename}","${o.albums}","${creationStr}","${o.status}",${o.sizeBytes},${o.isEstimated},"${o.google_url}"`);
+          console.log(`"${o.filename}","${o.albums}","${creationStr}","${o.status}",${o.sizeBytes},"${o.sizeType}",${o.quotaBytes || ''},"${o.backupQuality || ''}","${o.google_url}"`);
         }
         return;
       }
@@ -252,14 +261,15 @@ export const listAlbumCommand = new Command('list-album')
         console.log('\nSorted by size (largest first):');
         console.log('--------------------------------------------------------------------------------');
         for (const o of displayItems) {
-          let sizeStr = '';
-          if (o.isEstimated) {
-            sizeStr = o.sizeBytes > 0 ? `~ ${formatBytes(o.sizeBytes)} (Estimated)` : 'Unknown';
-          } else {
-            sizeStr = `${formatBytes(o.sizeBytes)} (Actual)`;
+          let sizeLine = `Size:     ${formatBytes(o.sizeBytes)} (${o.sizeType === 'Actual' ? 'Download' : o.sizeType})`;
+          if (o.quotaBytes !== null && o.quotaBytes !== undefined) {
+            if (o.quotaBytes === 0) {
+              sizeLine += ` | Quota: 0 Bytes (Shared)`;
+            } else {
+              sizeLine += ` | Quota: ${formatBytes(o.quotaBytes)} (${o.backupQuality || 'saver'})`;
+            }
           }
-
-          console.log(`Size:     ${sizeStr}`);
+          console.log(sizeLine);
           console.log(`Name:     ${o.filename}`);
           console.log(`Albums:   ${o.albums}`);
           console.log(`Status:   ${o.status}`);

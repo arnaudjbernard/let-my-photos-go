@@ -14,6 +14,8 @@ import { verifyCommand } from './commands/verify';
 import { scrubCommand } from './commands/scrub';
 import { listNoAlbumCommand } from './commands/list-no-album';
 import { listAlbumCommand } from './commands/list-album';
+import { inspectPhotoCommand } from './commands/inspect-photo';
+import { probeSizesCommand } from './commands/probe-sizes';
 import { setProfile } from './paths';
 
 const program = new Command();
@@ -38,5 +40,7 @@ program.addCommand(verifyCommand);
 program.addCommand(scrubCommand);
 program.addCommand(listNoAlbumCommand);
 program.addCommand(listAlbumCommand);
+program.addCommand(inspectPhotoCommand);
+program.addCommand(probeSizesCommand);
 
 program.parse(process.argv);

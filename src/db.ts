@@ -19,6 +19,9 @@ export interface PhotoRecord {
   size: number | null;
   owner_token: string | null;
   duration: number | null;
+  source: PhotoSource;
+  quota_bytes: number | null;
+  backup_quality: string | null;
   created_at: string;
   verified_at: string | null;
 }
@@ -70,6 +73,8 @@ function migrate(db: Database.Database): void {
   if (!cols.includes('size')) db.exec(`ALTER TABLE photos ADD COLUMN size INTEGER`);
   if (!cols.includes('owner_token')) db.exec(`ALTER TABLE photos ADD COLUMN owner_token TEXT`);
   if (!cols.includes('duration')) db.exec(`ALTER TABLE photos ADD COLUMN duration INTEGER`);
+  if (!cols.includes('quota_bytes')) db.exec(`ALTER TABLE photos ADD COLUMN quota_bytes INTEGER`);
+  if (!cols.includes('backup_quality')) db.exec(`ALTER TABLE photos ADD COLUMN backup_quality TEXT`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS albums (
@@ -117,6 +122,19 @@ export function upsertPhoto(
       mime_type = excluded.mime_type
   `,
   ).run(mediaItemId, googleUrl, creationTime, width, height, size, ownerToken, duration, mimeType);
+}
+
+export function updatePhotoMetadata(
+  mediaItemId: string,
+  size: number,
+  filename: string,
+  quotaBytes: number | null = null,
+  backupQuality: string | null = null,
+): void {
+  const db = getDb();
+  db.prepare(
+    `UPDATE photos SET size = ?, filename = ?, quota_bytes = ?, backup_quality = ? WHERE media_item_id = ?`
+  ).run(size, filename, quotaBytes, backupQuality, mediaItemId);
 }
 
 export function markDownloaded(mediaItemId: string, destPath: string, filename: string, companionPath?: string): void {
